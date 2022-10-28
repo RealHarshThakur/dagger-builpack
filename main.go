@@ -30,27 +30,20 @@ func build(repoURL string) error {
 	}
 	defer client.Close()
 
-	repo := client.Git(repoURL)
-	src, err := repo.Branch("main").Tree().ID(ctx)
-	if err != nil {
-		return err
-	}
-
-	workdir := client.Host().Workdir()
 	imageTag := fmt.Sprintf("heroku/buildpacks:20")
-	heroku := client.Container().From(imageTag)
-	heroku = heroku.WithMountedDirectory("/src", src).WithWorkdir("/src")
+	packBuilder := client.Container().From(imageTag)
 
-	build := heroku.Exec(dagger.ContainerExecOpts{
+	packBuilder = packBuilder.Exec(dagger.ContainerExecOpts{
+		Args: []string{"git", "clone", repoURL, "/tmp/src"},
+	})
+
+	packBuilder = packBuilder.WithWorkdir("/tmp/src")
+
+	build := packBuilder.Exec(dagger.ContainerExecOpts{
 		Args: []string{"/cnb/lifecycle/creator", "-app=.", "ttl.sh/random-new-image:latest"},
 	})
 
-	output, err := build.Directory("/src").ID(ctx)
-	if err != nil {
-		return err
-	}
-
-	_, err = workdir.Write(ctx, output, dagger.HostDirectoryWriteOpts{Path: "./output"})
+	_, err = build.Stdout().Contents(ctx)
 	if err != nil {
 		return err
 	}
