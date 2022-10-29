@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
 	"dagger.io/dagger"
+	"github.com/anchore/grype/grype/presenter/models"
 	"github.com/google/uuid"
 )
 
@@ -19,7 +20,7 @@ type Pipeline struct {
 // NewPipeline creates a new pipeline object
 func NewPipeline() (*Pipeline, error) {
 	ctx := context.Background()
-	client, err := dagger.Connect(ctx, dagger.WithLogOutput(io.Discard))
+	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stderr))
 	if err != nil {
 		return nil, err
 	}
@@ -52,21 +53,73 @@ func main() {
 	fmt.Printf("Built image %s\n", *image)
 
 	fmt.Println("Generating SBOM for image", *image)
+
 	sbom, err := p.GenerateSBOM(ctx, *image)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	fmt.Println("Generated SBOM for image", *image)
+	fmt.Println("Generated SBOM for image, SBOM artifact stored in working directory: sbom.json", *image)
 
 	fmt.Println("Scanning SBOM for vulnerabilities")
-	res, err := p.ScanVulns(ctx, *sbom)
+	err = p.GenerateVulnReport(ctx, *sbom)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	fmt.Println("Scanned SBOM for vulnerabilities")
-	fmt.Println(*res)
+
+	fmt.Println("Scanned SBOM for vulnerabilities, vulnerability report stored in working directory: vuln.json")
+	vulns, err := ScanVuln()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	levels, fixes := parseVulnForSeverityLevels(vulns)
+	for level, count := range levels {
+		fmt.Printf("Found %d %s vulnerabilities\n", count, level)
+	}
+	fmt.Printf("%d vulnerabilities have fixes available\n", fixes)
+
+}
+
+func parseVulnForSeverityLevels(vulns []models.Vulnerability) (map[string]int, int) {
+	levels := make(map[string]int, 0)
+	fixes := 0
+	for _, vuln := range vulns {
+		if levels[vuln.Severity] == 0 {
+			levels[vuln.Severity] = 1
+		} else {
+			levels[vuln.Severity]++
+		}
+		if len(vuln.Fix.Versions) > 0 {
+			fixes++
+		}
+	}
+
+	return levels, fixes
+}
+
+// ScanVuln scans the vuln report for vulnerabilities
+func ScanVuln() ([]models.Vulnerability, error) {
+	vulnJSON, err := os.ReadFile("./vuln.json")
+	if err != nil {
+		return nil, err
+	}
+	vulns := make([]models.Vulnerability, 0)
+	doc := &models.Document{}
+	err = json.Unmarshal(vulnJSON, &doc)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, match := range doc.Matches {
+		if match.Vulnerability.ID != "" {
+			vulns = append(vulns, match.Vulnerability)
+		}
+	}
+
+	return vulns, nil
 }
 
 func getRepoName(repoURL string) string {
@@ -98,39 +151,50 @@ func (p *Pipeline) Build(ctx context.Context, repoURL string) (*string, error) {
 }
 
 // GenerateSBOM generates a software bill of materials for the container image
-func (p *Pipeline) GenerateSBOM(ctx context.Context, image string) (*string, error) {
+func (p *Pipeline) GenerateSBOM(ctx context.Context, image string) (*dagger.FileID, error) {
 	client := p.Client
+	workdir := client.Host().Workdir()
 	bom := client.Container().From("anchore/syft:latest")
 	bom = bom.Exec(dagger.ContainerExecOpts{
-		Args: []string{image, "-o", "spdx-json"},
+		Args: []string{image, "-o", "spdx-json", "--file", "sbom.json"},
 	})
 
-	sbom, err := bom.Stdout().Contents(ctx)
+	fileID, err := bom.File("sbom.json").ID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return &sbom, nil
+	dir, err := bom.Directory(".").ID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = workdir.Write(ctx, dir)
+	if err != nil {
+		return nil, err
+	}
+	return &fileID, nil
 }
 
-// ScanVulns scans the SBOM for vulnerabilities
-func (p *Pipeline) ScanVulns(ctx context.Context, sbom string) (*string, error) {
+// GenerateVulnReport scans the SBOM for vulnerabilities
+func (p *Pipeline) GenerateVulnReport(ctx context.Context, file dagger.FileID) error {
 	client := p.Client
-	scanner := client.Container().From("anchore/grype:latest")
-	scanner = scanner.WithWorkdir("/tmp")
+	workdir := client.Host().Workdir()
 
-	scanner = scanner.Exec(dagger.ContainerExecOpts{
-		Args: []string{"echo", sbom, ">", "/tmp/sbom.json"},
-	})
+	scanner := client.Container().From("anchore/grype:latest").
+		WithMountedFile("/work/sbom.json", file)
 
-	scanner = scanner.Exec(dagger.ContainerExecOpts{
-		Args: []string{"sbom:/tmp/sbom.json > /tmp/vuln.json"},
-	})
-
-	result, err := scanner.File("/tmp/vuln.json").Contents(ctx)
+	dir, err := scanner.Exec(dagger.ContainerExecOpts{
+		Args: []string{"sbom:/work/sbom.json", "-o", "json", "--file", "vuln.json"},
+	}).Directory(".").ID(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return &result, nil
+	_, err = workdir.Write(ctx, dir)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
