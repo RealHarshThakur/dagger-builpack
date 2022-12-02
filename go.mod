@@ -1,4 +1,4 @@
-module git.civo.com/infrastructure/conformance
+module github.com/RealHarshThakur/dagger-buildpack
 
 go 1.18
 
@@ -6,7 +6,6 @@ require (
 	dagger.io/dagger v0.3.1
 	github.com/anchore/grype v0.51.0
 	github.com/google/uuid v1.3.0
-	github.com/netlify/open-api/v2 v2.12.1
 )
 
 require (

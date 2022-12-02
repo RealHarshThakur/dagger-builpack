@@ -2,199 +2,94 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
+	"flag"
 	"os"
-	"strings"
+	"path"
+	"runtime"
+	"strconv"
 
-	"dagger.io/dagger"
-	"github.com/anchore/grype/grype/presenter/models"
-	"github.com/google/uuid"
+	pl "github.com/RealHarshThakur/dagger-buildpack/pipeline"
+	"github.com/sirupsen/logrus"
 )
 
-// Pipeline contains fields/clients for building a pipeline
-type Pipeline struct {
-	Client *dagger.Client
+var (
+	gitURL, builderImage string
+)
+
+func init() {
+	flag.StringVar(&gitURL, "git-url", "", "git url to build")
+	flag.StringVar(&gitURL, "g", "", "git url to build")
+
+	flag.StringVar(&builderImage, "builder-image", "paketobuildpacks/builder:base", "builder image to use")
+	flag.StringVar(&builderImage, "b", "paketobuildpacks/builder:base", "builder image to use")
+
 }
-
-// NewPipeline creates a new pipeline object
-func NewPipeline() (*Pipeline, error) {
-	ctx := context.Background()
-	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stderr))
-	if err != nil {
-		return nil, err
-	}
-
-	return &Pipeline{
-		Client: client,
-	}, nil
-}
-
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("must pass in a git repo to build")
-		os.Exit(1)
+	flag.Parse()
+	log := SetupLogging()
+
+	if gitURL == "" {
+		log.Fatal("git-url is required")
 	}
-	repo := os.Args[1]
-	p, err := NewPipeline()
+
+	repo := gitURL
+	p, err := pl.NewPipeline(os.Stdout)
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Fatal(err)
 	}
 
 	ctx := context.Background()
-	fmt.Printf("Building image %s", repo)
-	image, err := p.Build(ctx, repo)
+	log.Infof("Building image %s", repo)
+	image, err := p.Build(ctx, builderImage, repo)
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Fatal(err)
 	}
 
-	fmt.Printf("Built image %s\n", *image)
+	log.Infof("Built image %s\n", *image)
 
-	fmt.Println("Generating SBOM for image", *image)
+	log.Infof("Generating SBOM for image", *image)
 
 	sbom, err := p.GenerateSBOM(ctx, *image)
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Fatal(err)
 	}
-	fmt.Println("Generated SBOM for image, SBOM artifact stored in working directory: sbom.json", *image)
+	log.Infof("Generated SBOM for image, SBOM artifact stored in working directory: sbom.json", *image)
 
-	fmt.Println("Scanning SBOM for vulnerabilities")
+	log.Infof("Scanning SBOM for vulnerabilities %s", &image)
 	err = p.GenerateVulnReport(ctx, *sbom)
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Fatal(err)
 	}
 
-	fmt.Println("Scanned SBOM for vulnerabilities, vulnerability report stored in working directory: vuln.json")
-	vulns, err := ScanVuln()
+	log.Info("Scanned SBOM for vulnerabilities, vulnerability report stored in working directory: vuln.json")
+	vulns, err := pl.ScanVuln()
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Fatal(err)
 	}
 
-	levels, fixes := parseVulnForSeverityLevels(vulns)
+	levels, fixes := pl.ParseVulnForSeverityLevels(vulns)
 	for level, count := range levels {
-		fmt.Printf("Found %d %s vulnerabilities\n", count, level)
+		log.Infof("Found %d %s vulnerabilities\n", count, level)
 	}
-	fmt.Printf("%d vulnerabilities have fixes available\n", fixes)
+	log.Infof("%d vulnerabilities have fixes available\n", fixes)
 
 }
 
-func parseVulnForSeverityLevels(vulns []models.Vulnerability) (map[string]int, int) {
-	levels := make(map[string]int, 0)
-	fixes := 0
-	for _, vuln := range vulns {
-		if levels[vuln.Severity] == 0 {
-			levels[vuln.Severity] = 1
-		} else {
-			levels[vuln.Severity]++
-		}
-		if len(vuln.Fix.Versions) > 0 {
-			fixes++
-		}
-	}
-
-	return levels, fixes
-}
-
-// ScanVuln scans the vuln report for vulnerabilities
-func ScanVuln() ([]models.Vulnerability, error) {
-	vulnJSON, err := os.ReadFile("./vuln.json")
-	if err != nil {
-		return nil, err
-	}
-	vulns := make([]models.Vulnerability, 0)
-	doc := &models.Document{}
-	err = json.Unmarshal(vulnJSON, &doc)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, match := range doc.Matches {
-		if match.Vulnerability.ID != "" {
-			vulns = append(vulns, match.Vulnerability)
-		}
-	}
-
-	return vulns, nil
-}
-
-func getRepoName(repoURL string) string {
-	repoSplit := strings.Split(repoURL, "/")
-	return repoSplit[len(repoSplit)-1]
-}
-
-// Build builds a container image for the git repo using buildpacks
-// If build is successful, returns the image name
-func (p *Pipeline) Build(ctx context.Context, repoURL string) (*string, error) {
-	client := p.Client
-	imageTag := fmt.Sprintf("heroku/buildpacks:20")
-	packBuilder := client.Container().From(imageTag)
-
-	packBuilder = packBuilder.Exec(dagger.ContainerExecOpts{
-		Args: []string{"git", "clone", repoURL, "/tmp/src"},
+// SetupLogging sets up the logging for the router daemon
+func SetupLogging() *logrus.Logger {
+	// Logging create logging object
+	log := logrus.New()
+	log.SetOutput(os.Stdout)
+	log.SetLevel(logrus.DebugLevel)
+	log.SetReportCaller(true)
+	log.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp:   true,
+		TimestampFormat: "2006-01-02 15:04:05",
+		CallerPrettyfier: func(frame *runtime.Frame) (function string, file string) {
+			fileName := path.Base(frame.File) + ":" + strconv.Itoa(frame.Line)
+			return "", fileName
+		},
 	})
 
-	packBuilder = packBuilder.WithWorkdir("/tmp/src")
-
-	repoName := getRepoName(repoURL)
-	imageName := fmt.Sprintf("ttl.sh/%s-%s:30m", repoName, uuid.New().String()[:5])
-	build := packBuilder.Exec(dagger.ContainerExecOpts{
-		Args: []string{"/cnb/lifecycle/creator", "-app=.", imageName},
-	})
-
-	_, err := build.Stdout().Contents(ctx)
-	return &imageName, err
-}
-
-// GenerateSBOM generates a software bill of materials for the container image
-func (p *Pipeline) GenerateSBOM(ctx context.Context, image string) (*dagger.FileID, error) {
-	client := p.Client
-	workdir := client.Host().Workdir()
-	bom := client.Container().From("anchore/syft:latest")
-	bom = bom.Exec(dagger.ContainerExecOpts{
-		Args: []string{image, "-o", "spdx-json", "--file", "sbom.json"},
-	})
-
-	fileID, err := bom.File("sbom.json").ID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	dir, err := bom.Directory(".").ID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = workdir.Write(ctx, dir)
-	if err != nil {
-		return nil, err
-	}
-	return &fileID, nil
-}
-
-// GenerateVulnReport scans the SBOM for vulnerabilities
-func (p *Pipeline) GenerateVulnReport(ctx context.Context, file dagger.FileID) error {
-	client := p.Client
-	workdir := client.Host().Workdir()
-
-	scanner := client.Container().From("anchore/grype:latest").
-		WithMountedFile("/work/sbom.json", file)
-
-	dir, err := scanner.Exec(dagger.ContainerExecOpts{
-		Args: []string{"sbom:/work/sbom.json", "-o", "json", "--file", "vuln.json"},
-	}).Directory(".").ID(ctx)
-	if err != nil {
-		return err
-	}
-
-	_, err = workdir.Write(ctx, dir)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return log
 }

@@ -10,7 +10,8 @@
             "request": "launch",
             "mode": "auto",
             "program": "${workspaceFolder}/main.go", 
-            "args": ["https://github.com/RealHarshThakur/sample-golang"]
+          
+            "args": ["-g", "https://github.com/civo/cli.git", "-b","paketobuildpacks/builder:base"]
         }
     ]
 }
