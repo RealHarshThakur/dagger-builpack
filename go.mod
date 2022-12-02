@@ -5,7 +5,9 @@ go 1.18
 require (
 	dagger.io/dagger v0.3.1
 	github.com/anchore/grype v0.51.0
+	github.com/aws/aws-sdk-go v1.44.102
 	github.com/google/uuid v1.3.0
+	github.com/sirupsen/logrus v1.9.0
 )
 
 require (
@@ -130,6 +132,7 @@ require (
 	github.com/jedisct1/go-minisign v0.0.0-20211028175153-1c139d1cc84b // indirect
 	github.com/jhump/protoreflect v1.12.0 // indirect
 	github.com/jinzhu/copier v0.3.2 // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/jonboulle/clockwork v0.3.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -189,7 +192,6 @@ require (
 	github.com/sigstore/cosign v1.13.0 // indirect
 	github.com/sigstore/rekor v0.12.1-0.20220915152154-4bb6f441c1b2 // indirect
 	github.com/sigstore/sigstore v1.4.2 // indirect
-	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/spdx/tools-golang v0.2.0 // indirect
 	github.com/spf13/afero v1.8.2 // indirect

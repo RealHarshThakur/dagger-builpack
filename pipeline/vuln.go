@@ -7,6 +7,8 @@ import (
 
 	"dagger.io/dagger"
 	"github.com/anchore/grype/grype/presenter/models"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 // ParseVulnForSeverity parses the vuln report for a specific severity level and returns count of each level
@@ -50,7 +52,7 @@ func ScanVuln() ([]models.Vulnerability, error) {
 }
 
 // GenerateVulnReport scans the SBOM for vulnerabilities
-func (p *Pipeline) GenerateVulnReport(ctx context.Context, file dagger.FileID) error {
+func (p *Pipeline) GenerateVulnReport(ctx context.Context, file dagger.FileID, objectStore string) error {
 	client := p.Client
 	workdir := client.Host().Workdir()
 
@@ -64,9 +66,27 @@ func (p *Pipeline) GenerateVulnReport(ctx context.Context, file dagger.FileID) e
 		return err
 	}
 
-	_, err = workdir.Write(ctx, dir)
+	_, err = workdir.Write(ctx, dir, dagger.HostDirectoryWriteOpts{
+		Path: "artifacts/",
+	})
 	if err != nil {
 		return err
+	}
+
+	if objectStore != "" && p.S3Client != nil {
+		f, err := os.Open("artifacts/vuln.json")
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		_, err = p.S3Client.PutObject(&s3.PutObjectInput{
+			Bucket: aws.String(objectStore),
+			Key:    aws.String("vuln.json"),
+			Body:   f,
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

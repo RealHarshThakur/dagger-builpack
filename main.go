@@ -13,32 +13,59 @@ import (
 )
 
 var (
-	gitURL, builderImage string
+	gitURL, builderImage, rebaseImage, objectStoreName string
 )
 
 func init() {
+	flag.StringVar(&rebaseImage, "rebase-image", "", "The image to rebase")
+	flag.StringVar(&rebaseImage, "r", "", "The image to rebase")
+
 	flag.StringVar(&gitURL, "git-url", "", "git url to build")
 	flag.StringVar(&gitURL, "g", "", "git url to build")
 
 	flag.StringVar(&builderImage, "builder-image", "paketobuildpacks/builder:base", "builder image to use")
 	flag.StringVar(&builderImage, "b", "paketobuildpacks/builder:base", "builder image to use")
 
+	flag.StringVar(&objectStoreName, "object-store-name", "", "object store name")
+	flag.StringVar(&objectStoreName, "o", "", "object store name")
 }
 func main() {
 	flag.Parse()
 	log := SetupLogging()
+
+	dirPath := "artifacts"
+
+	// Check if the directory already exists.
+	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+		// Create the directory if it doesn't exist.
+		err = os.MkdirAll(dirPath, 0755)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	ctx := context.Background()
+
+	p, err := pl.NewPipeline(os.Stdout)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if rebaseImage != "" {
+		err = p.Rebase(ctx, rebaseImage)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Infof("Successfully rebased image %s", rebaseImage)
+		os.Exit(0)
+	}
 
 	if gitURL == "" {
 		log.Fatal("git-url is required")
 	}
 
 	repo := gitURL
-	p, err := pl.NewPipeline(os.Stdout)
-	if err != nil {
-		log.Fatal(err)
-	}
 
-	ctx := context.Background()
 	log.Infof("Building image %s", repo)
 	image, err := p.Build(ctx, builderImage, repo)
 	if err != nil {
@@ -49,14 +76,14 @@ func main() {
 
 	log.Infof("Generating SBOM for image", *image)
 
-	sbom, err := p.GenerateSBOM(ctx, *image)
+	sbom, err := p.GenerateSBOM(ctx, *image, objectStoreName)
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("Generated SBOM for image, SBOM artifact stored in working directory: sbom.json", *image)
 
 	log.Infof("Scanning SBOM for vulnerabilities %s", &image)
-	err = p.GenerateVulnReport(ctx, *sbom)
+	err = p.GenerateVulnReport(ctx, *sbom, objectStoreName)
 	if err != nil {
 		log.Fatal(err)
 	}
