@@ -41,6 +41,8 @@ Run the following command:
 dagger-buildpack -g https://github.com/RealHarshThakur/sample-golang 
 ```
 
+It will push the image to ttl.sh, produce sbom.json and vuln.json in `artifacts` directory
+
 If you have a remote buildkit hosted, you can export `BUILDKIT_HOST"="tcp://<ip address>` for image builds to be done remotely.
 
 
