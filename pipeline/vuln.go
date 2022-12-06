@@ -31,7 +31,7 @@ func ParseVulnForSeverityLevels(vulns []models.Vulnerability) (map[string]int, i
 
 // ScanVuln scans the vuln report for vulnerabilities
 func ScanVuln() ([]models.Vulnerability, error) {
-	vulnJSON, err := os.ReadFile("./vuln.json")
+	vulnJSON, err := os.ReadFile("./artifacts/vuln.json")
 	if err != nil {
 		return nil, err
 	}
