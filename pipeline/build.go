@@ -23,7 +23,7 @@ func (p *Pipeline) Build(ctx context.Context, builderImage, repoURL string) (*st
 	repoName := getRepoName(repoURL)
 	imageName := fmt.Sprintf("ttl.sh/%s-%s:30m", repoName, uuid.New().String()[:5])
 	build := packBuilder.Exec(dagger.ContainerExecOpts{
-		Args: []string{"/cnb/lifecycle/creator", "-app=.", imageName},
+		Args: []string{"bash", "-c", fmt.Sprintf("CNB_PLATFORM_API=0.8 /cnb/lifecycle/creator -app=. %s", imageName)},
 	})
 
 	_, err := build.Stdout().Contents(ctx)
