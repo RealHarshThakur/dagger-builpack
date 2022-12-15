@@ -28,11 +28,6 @@ Before Dagger, way to interact with Buildkit was via buildkit frontend or by mak
 
 - Syft/Grype: They're just amazing tools at what they do. I didn't consider other ones but let me know if you would like to use other tools to generate SBOM/Vulnerabiltiy reports. 
 
-- Why not Tekton?
-Tekton shows an example of how to use Kaniko to build images. To share cache, it has a concept of workspace but automating it didn't seem trivial. I'm open to suggestions if you have any.
-
-- Why not kpack?
-kpack seems to have a concept of image caches but it's not as implict as Buildkit. Cache is a first-class citizen in Buildkit and it's easy to share it across multiple nodes. 
 
 ### Example:
 
