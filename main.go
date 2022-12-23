@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	gitURL, builderImage, rebaseImage, objectStoreName string
+	gitURL, builderImage, rebaseImage, objectStoreName, buildTool string
 )
 
 func init() {
@@ -25,6 +25,9 @@ func init() {
 
 	flag.StringVar(&builderImage, "builder-image", "paketobuildpacks/builder:base", "builder image to use")
 	flag.StringVar(&builderImage, "b", "paketobuildpacks/builder:base", "builder image to use")
+
+	flag.StringVar(&buildTool, "build-tool", "pack", "build tool to use")
+	flag.StringVar(&buildTool, "t", "pack", "build tool to use")
 
 	flag.StringVar(&objectStoreName, "object-store-name", "", "object store name")
 	flag.StringVar(&objectStoreName, "o", "", "object store name")
@@ -67,22 +70,22 @@ func main() {
 	repo := gitURL
 
 	log.Infof("Building image %s", repo)
-	image, err := p.Build(ctx, builderImage, repo)
+	image, err := p.Build(ctx, buildTool, repo, builderImage)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	log.Infof("Built image %s\n", *image)
 
-	log.Infof("Generating SBOM for image", *image)
+	log.Infof("Generating SBOM for image %s", *image)
 
 	sbom, err := p.GenerateSBOM(ctx, *image, objectStoreName)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("Generated SBOM for image, SBOM artifact stored in working directory: sbom.json", *image)
+	log.Infof("Generated SBOM for image %s", *image)
 
-	log.Infof("Scanning SBOM for vulnerabilities %s", &image)
+	log.Infof("Scanning SBOM for vulnerabilities %s", *image)
 	err = p.GenerateVulnReport(ctx, *sbom, objectStoreName)
 	if err != nil {
 		log.Fatal(err)

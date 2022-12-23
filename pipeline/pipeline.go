@@ -10,7 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
 
 // Pipeline contains fields/clients for building a pipeline
@@ -18,8 +17,7 @@ type Pipeline struct {
 	Client *dagger.Client
 	// Not including a logger here as this should remain a library and libraries should not log
 	// Also, logging via the dagger client can be done if needed
-	S3Client   *s3.S3
-	S3Uploader *s3manager.Uploader
+	S3Client *s3.S3
 }
 
 // NewPipeline creates a new pipeline object
@@ -31,7 +29,6 @@ func NewPipeline(o io.Writer) (*Pipeline, error) {
 	}
 
 	var s3Client *s3.S3
-	var uploader *s3manager.Uploader
 	if os.Getenv("S3_ACCESS_KEY_ID") != "" && os.Getenv("S3_SECRET_ACCESS_KEY") != "" {
 		creds := credentials.NewStaticCredentials(os.Getenv("S3_ACCESS_KEY_ID"), os.Getenv("S3_SECRET_ACCESS_KEY"), "")
 		cfg := aws.NewConfig().WithRegion("us-east-1").
@@ -45,13 +42,11 @@ func NewPipeline(o io.Writer) (*Pipeline, error) {
 				Region: aws.String("us-east-1"),
 			},
 		))
-		uploader = s3manager.NewUploader(sess)
 		s3Client = s3.New(sess, cfg)
 	}
 
 	return &Pipeline{
-		Client:     client,
-		S3Client:   s3Client,
-		S3Uploader: uploader,
+		Client:   client,
+		S3Client: s3Client,
 	}, nil
 }
