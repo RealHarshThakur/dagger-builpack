@@ -101,7 +101,7 @@ func main() {
 	}
 	log.Infof("%d vulnerabilities have fixes available\n\n", fixes)
 
-  log.Infof("Successfully built image %s\n", *image)
+	log.Infof("Successfully built image %s\n", *image)
 }
 
 // SetupLogging sets up the logging for the router daemon
