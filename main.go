@@ -29,6 +29,7 @@ func init() {
 	flag.StringVar(&objectStoreName, "object-store-name", "", "object store name")
 	flag.StringVar(&objectStoreName, "o", "", "object store name")
 }
+
 func main() {
 	flag.Parse()
 	log := SetupLogging()
@@ -80,9 +81,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("Generated SBOM for image, SBOM artifact stored in working directory: sbom.json", *image)
+	log.Infof("Generated SBOM for image %s, SBOM artifact stored in working directory: sbom.json", *image)
 
-	log.Infof("Scanning SBOM for vulnerabilities %s", &image)
+	log.Infof("Scanning SBOM for vulnerabilities %s", *image)
 	err = p.GenerateVulnReport(ctx, *sbom, objectStoreName)
 	if err != nil {
 		log.Fatal(err)
@@ -98,8 +99,9 @@ func main() {
 	for level, count := range levels {
 		log.Infof("Found %d %s vulnerabilities\n", count, level)
 	}
-	log.Infof("%d vulnerabilities have fixes available\n", fixes)
+	log.Infof("%d vulnerabilities have fixes available\n\n", fixes)
 
+  log.Infof("Successfully built image %s\n", *image)
 }
 
 // SetupLogging sets up the logging for the router daemon
