@@ -74,7 +74,7 @@ func main() {
 
 	log.Infof("Built image %s\n", *image)
 
-	log.Infof("Generating SBOM for image", *image)
+	log.Infof("Generating SBOM for image %s", *image)
 
 	sbom, err := p.GenerateSBOM(ctx, *image, objectStoreName)
 	if err != nil {
