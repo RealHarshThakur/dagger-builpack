@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	gitURL, builderImage, rebaseImage, objectStoreName, buildTool string
+	gitURL, builderImage, rebaseImage, objectStoreName, buildTool, registryServer, registryUsername, registryPassword, registryEmail, registryRepoName, registryImageName, registryImageTag string
 )
 
 func init() {
@@ -31,6 +31,27 @@ func init() {
 
 	flag.StringVar(&objectStoreName, "object-store-name", "", "object store name")
 	flag.StringVar(&objectStoreName, "o", "", "object store name")
+
+	flag.StringVar(&registryServer, "registry-server", "", "registry server")
+	flag.StringVar(&registryServer, "s", "", "registry server")
+
+	flag.StringVar(&registryUsername, "registry-username", "", "registry username")
+	flag.StringVar(&registryUsername, "u", "", "registry username")
+
+	flag.StringVar(&registryPassword, "registry-password", "", "registry password")
+	flag.StringVar(&registryPassword, "p", "", "registry password")
+
+	flag.StringVar(&registryEmail, "registry-email", "", "registry email")
+	flag.StringVar(&registryEmail, "e", "", "registry email")
+
+	flag.StringVar(&registryRepoName, "registry-repo-name", "", "registry repo name")
+	flag.StringVar(&registryRepoName, "n", "", "registry repo name")
+
+	flag.StringVar(&registryImageName, "registry-image-name", "", "registry image name")
+	flag.StringVar(&registryImageName, "i", "", "registry image name")
+
+	flag.StringVar(&registryImageTag, "registry-image-tag", "latest", "registry image tag")
+	flag.StringVar(&registryImageTag, "a", "latest", "registry image tag")
 }
 func main() {
 	flag.Parse()
@@ -70,7 +91,19 @@ func main() {
 	repo := gitURL
 
 	log.Infof("Building image %s", repo)
-	image, err := p.Build(ctx, buildTool, repo, builderImage)
+	var regInfo *pl.RegistryInfo
+	if registryServer != "" && registryUsername != "" && registryPassword != "" && registryEmail != "" && registryRepoName != "" && registryImageName != "" {
+		regInfo = &pl.RegistryInfo{
+			RegistryServer:   registryServer,
+			RegistryUsername: registryUsername,
+			RegistryPassword: registryPassword,
+			RegistryEmail:    registryEmail,
+			RepoName:         registryRepoName,
+			ImageName:        registryImageName,
+			ImageTag:         registryImageTag,
+		}
+	}
+	image, err := p.Build(ctx, buildTool, repo, builderImage, regInfo)
 	if err != nil {
 		log.Fatal(err)
 	}
