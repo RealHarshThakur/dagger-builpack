@@ -8,9 +8,6 @@ import (
 	"os"
 
 	"dagger.io/dagger"
-	git "github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/google/uuid"
 )
 
@@ -103,15 +100,11 @@ func (p *Pipeline) KoBuild(ctx context.Context, repoURL string, regInfo *Registr
 		Args: []string{"apk", "add", "git"},
 	}).Exec(dagger.ContainerExecOpts{
 		Args: []string{"apk", "add", "ko"},
-	}).Exec(dagger.ContainerExecOpts{
-		Args: []string{"git", "clone", repoURL, "/tmp/src"},
 	})
 
 	ddir := client.Directory().WithNewFile("/tmp/config.json", dagger.DirectoryWithNewFileOpts{
 		Contents: string(dcBytes),
 	})
-
-	koBuilder = koBuilder.WithWorkdir("/tmp/src")
 
 	ddirID, err := ddir.ID(ctx)
 	if err != nil {
@@ -119,6 +112,19 @@ func (p *Pipeline) KoBuild(ctx context.Context, repoURL string, regInfo *Registr
 	}
 
 	koBuilder = koBuilder.WithMountedDirectory("/mnt", ddirID)
+
+	gitDir := client.Host().Workdir().Read().Directory("./src")
+	if err != nil {
+		return nil, err
+	}
+
+	gitDirID, err := gitDir.ID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	koBuilder = koBuilder.WithMountedDirectory("/tmp/src", gitDirID)
+	koBuilder = koBuilder.WithWorkdir("/tmp/src")
 
 	imageName := fmt.Sprintf("%s/%s/%s", regInfo.RegistryServer, regInfo.RepoName, regInfo.ImageName)
 	build := koBuilder.Exec(dagger.ContainerExecOpts{
@@ -163,52 +169,6 @@ func (p *Pipeline) PackBuild(ctx context.Context, builderImage, repoURL string, 
 	}
 
 	packBuilder = packBuilder.WithMountedDirectory("/mnt", ddirID)
-
-	repo, err := git.PlainClone("./src", false, &git.CloneOptions{
-		URL: repoURL,
-		Auth: &http.BasicAuth{
-			Username: "abc123", // yes, this can be anything except an empty string
-			Password: os.Getenv("GIT_TOKEN"),
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	branches, err := repo.Branches()
-	if err != nil {
-		return nil, err
-	}
-
-	branches.ForEach(func(r *plumbing.Reference) error {
-		if r.Name().IsBranch() {
-			branchName := r.Name().Short()
-			fmt.Println(branchName)
-		}
-		return nil
-	})
-
-	tagrefs, err := repo.Tags()
-	if err != nil {
-		return nil, err
-	}
-
-	err = tagrefs.ForEach(func(t *plumbing.Reference) error {
-		fmt.Println(t)
-		return nil
-	})
-
-	w, err := repo.Worktree()
-	if err != nil {
-		return nil, err
-	}
-
-	err = w.Checkout(&git.CheckoutOptions{
-		Branch: plumbing.NewBranchReferenceName("master"),
-	})
-	if err != nil {
-		return nil, err
-	}
 
 	gitDir := client.Host().Workdir().Read().Directory("./src")
 	if err != nil {

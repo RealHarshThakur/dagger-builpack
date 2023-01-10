@@ -115,6 +115,12 @@ func main() {
 			ImageTag:         registryImageTag,
 		}
 	}
+
+	err = p.GitClone(repo, gitBranch, gitTag)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	image, err := p.Build(ctx, buildTool, repo, builderImage, regInfo)
 	if err != nil {
 		log.Fatal(err)
