@@ -5,8 +5,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"dagger.io/dagger"
+	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/google/uuid"
 )
 
@@ -160,11 +164,68 @@ func (p *Pipeline) PackBuild(ctx context.Context, builderImage, repoURL string, 
 
 	packBuilder = packBuilder.WithMountedDirectory("/mnt", ddirID)
 
-	packBuilder = packBuilder.Exec(dagger.ContainerExecOpts{
-		Args: []string{"git", "clone", repoURL, "/tmp/src"},
+	repo, err := git.PlainClone("./src", false, &git.CloneOptions{
+		URL: repoURL,
+		Auth: &http.BasicAuth{
+			Username: "abc123", // yes, this can be anything except an empty string
+			Password: os.Getenv("GIT_TOKEN"),
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	branches, err := repo.Branches()
+	if err != nil {
+		return nil, err
+	}
+
+	branches.ForEach(func(r *plumbing.Reference) error {
+		if r.Name().IsBranch() {
+			branchName := r.Name().Short()
+			fmt.Println(branchName)
+		}
+		return nil
 	})
 
-	packBuilder = packBuilder.WithWorkdir("/tmp/src")
+	tagrefs, err := repo.Tags()
+	if err != nil {
+		return nil, err
+	}
+
+	err = tagrefs.ForEach(func(t *plumbing.Reference) error {
+		fmt.Println(t)
+		return nil
+	})
+
+	w, err := repo.Worktree()
+	if err != nil {
+		return nil, err
+	}
+
+	err = w.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.NewBranchReferenceName("master"),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	gitDir := client.Host().Workdir().Read().Directory("./src")
+	if err != nil {
+		return nil, err
+	}
+
+	gitDirID, err := gitDir.ID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	packBuilder = packBuilder.WithMountedDirectory("/tmp/src", gitDirID)
+	// Copying from /tmp/src to /tmp/src1 as there are file ownership issues
+	packBuilder = packBuilder.WithWorkdir("/tmp/src1")
+	packBuilder = packBuilder.Exec(dagger.ContainerExecOpts{
+		Args: []string{"sh", "-c", "mkdir /tmp/src1; cd /tmp/src; tar -c --exclude .git . | tar -x -C /tmp/src1"},
+	})
 
 	imageName := fmt.Sprintf("%s/%s/%s:%s", regInfo.RegistryServer, regInfo.RepoName, regInfo.ImageName, regInfo.ImageTag)
 	packBuilder = packBuilder.Exec(
@@ -179,5 +240,5 @@ func (p *Pipeline) PackBuild(ctx context.Context, builderImage, repoURL string, 
 		})
 
 	_, err = build.Stdout().Contents(ctx)
-	return &imageName, err
+	return &imageName, os.RemoveAll("./src")
 }

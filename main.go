@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	gitURL, builderImage, rebaseImage, objectStoreName, buildTool, registryServer, registryUsername, registryPassword, registryEmail, registryRepoName, registryImageName, registryImageTag string
+	gitURL, gitBranch, gitTag, onlyBuild, builderImage, rebaseImage, objectStoreName, buildTool, registryServer, registryUsername, registryPassword, registryEmail, registryRepoName, registryImageName, registryImageTag string
 )
 
 func init() {
@@ -22,6 +22,10 @@ func init() {
 
 	flag.StringVar(&gitURL, "git-url", "", "git url to build")
 	flag.StringVar(&gitURL, "g", "", "git url to build")
+
+	flag.StringVar(&gitBranch, "git-branch", "", "git branch to build")
+
+	flag.StringVar(&gitTag, "git-tag", "", "git tag to build")
 
 	flag.StringVar(&builderImage, "builder-image", "paketobuildpacks/builder:base", "builder image to use")
 	flag.StringVar(&builderImage, "b", "paketobuildpacks/builder:base", "builder image to use")
@@ -52,6 +56,10 @@ func init() {
 
 	flag.StringVar(&registryImageTag, "registry-image-tag", "latest", "registry image tag")
 	flag.StringVar(&registryImageTag, "a", "latest", "registry image tag")
+
+	flag.StringVar(&onlyBuild, "only-build", "false", "only build the image, do not generate SBOM/vuln report")
+	flag.StringVar(&onlyBuild, "", "false", "only build the image")
+
 }
 func main() {
 	flag.Parse()
@@ -88,6 +96,10 @@ func main() {
 		log.Fatal("git-url is required")
 	}
 
+	if os.Getenv("GIT_TOKEN") == "" {
+		log.Fatal("GIT_TOKEN is required")
+	}
+
 	repo := gitURL
 
 	log.Infof("Building image %s", repo)
@@ -109,6 +121,10 @@ func main() {
 	}
 
 	log.Infof("Built image %s\n", *image)
+
+	if onlyBuild == "true" {
+		os.Exit(0)
+	}
 
 	log.Infof("Generating SBOM for image %s", *image)
 
